@@ -1,0 +1,13 @@
+spring.application.name=igps2xingzhe
+
+server.port=18877
+
+
+user.xingzhe.username: xxx
+user.xingzhe.password: xxx
+user.xingzhe.pubKey: xxx
+
+user.igps.username: xxx
+user.igps.password: xxx
+
+

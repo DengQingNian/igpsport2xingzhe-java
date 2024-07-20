@@ -2,10 +2,12 @@ spring.application.name=igps2xingzhe
 
 server.port=18877
 
+data: E:\\temp
 
 user.xingzhe.username: xxx
 user.xingzhe.password: xxx
-user.xingzhe.pubKey: xxx
+# 固定公钥
+user.xingzhe.pubKey: "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDmuQkBbijudDAJgfffDeeIButqWHZvUwcRuvWdg89393FSdz3IJUHc0rgI/S3WuU8N0VePJLmVAZtCOK4qe4FY/eKmWpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa8r6+TIqqL5WUHtRqmQIDAQAB"
 
 user.igps.username: xxx
 user.igps.password: xxx

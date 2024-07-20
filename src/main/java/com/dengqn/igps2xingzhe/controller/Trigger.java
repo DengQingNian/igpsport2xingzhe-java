@@ -1,5 +1,6 @@
 package com.dengqn.igps2xingzhe.controller;
 
+import cn.hutool.core.io.IoUtil;
 import cn.hutool.crypto.KeyUtil;
 import cn.hutool.crypto.SecureUtil;
 import cn.hutool.crypto.asymmetric.AsymmetricAlgorithm;
@@ -12,6 +13,7 @@ import org.apache.catalina.security.SecurityUtil;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.cookie.Cookie;
 import org.apache.hc.client5.http.cookie.CookieStore;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.io.entity.BasicHttpEntity;
@@ -74,11 +76,11 @@ public class Trigger {
 		loginData.put("password", encryptBase64);
 		loginData.put("source", "web");
 
-		BasicHttpResponse response = (BasicHttpResponse) httpClient.execute(ClassicRequestBuilder
+		CloseableHttpResponse response = (CloseableHttpResponse) httpClient.execute(ClassicRequestBuilder
 				.post("https://www.imxingzhe.com/api/v4/account/login")
 				.setEntity(JSONUtil.toJsonPrettyStr(loginData), ContentType.APPLICATION_JSON)
 				.build());
-		log.info("xingzhe login: {}", response);
+		log.info("xingzhe login: {}", IoUtil.read(response.getEntity().getContent()));
 
 		return ResponseEntity.ok("ok");
 	}

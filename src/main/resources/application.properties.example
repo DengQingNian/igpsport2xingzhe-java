@@ -12,4 +12,6 @@ user.xingzhe.pubKey: "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDmuQkBbijudDAJgfffDe
 user.igps.username: xxx
 user.igps.password: xxx
 
-
+user.giant.enable: false
+user.giant.username: xxx
+user.giant.password: xxx

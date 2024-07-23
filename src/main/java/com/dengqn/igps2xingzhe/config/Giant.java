@@ -19,11 +19,12 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 @Configuration
-@ConfigurationProperties(prefix = "user.igps")
-public class IGPSport implements Serializable {
-	@Serial
-	private static final long serialVersionUID = 3004387713475397922L;
+@ConfigurationProperties(prefix = "user.giant")
+public class Giant implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1996804203171936839L;
 
-	private String username;
-	private String password;
+    private Boolean enable;
+    private String username;
+    private String password;
 }

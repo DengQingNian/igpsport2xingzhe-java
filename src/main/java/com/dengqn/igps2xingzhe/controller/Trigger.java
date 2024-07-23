@@ -10,8 +10,10 @@ import cn.hutool.crypto.SecureUtil;
 import cn.hutool.crypto.asymmetric.AsymmetricAlgorithm;
 import cn.hutool.crypto.asymmetric.KeyType;
 import cn.hutool.crypto.asymmetric.RSA;
+import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONConfig;
 import cn.hutool.json.JSONUtil;
+import com.dengqn.igps2xingzhe.config.Giant;
 import com.dengqn.igps2xingzhe.config.IGPSport;
 import com.dengqn.igps2xingzhe.config.XingZhe;
 import com.dengqn.igps2xingzhe.vo.IGPSActivity;
@@ -49,6 +51,7 @@ import java.security.spec.RSAPublicKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 同步
@@ -68,11 +71,15 @@ public class Trigger {
     @Value("${dataDir:/data}")
     private String fileDir;
 
-
+    @Autowired
+    private Giant giant;
     @Autowired
     private XingZhe xingZhe;
     @Autowired
     private IGPSport igpSport;
+
+    private static final String GIANT_TOKEN_KEY = "GIANT_TOKEN_KEY";
+    private static final Map<String, Object> contextCache = new ConcurrentHashMap<>(4);
 
     @GetMapping("/sync/igps2xingzhe")
     public ResponseEntity<String> onSyncIGPS2XingZhe() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
@@ -80,10 +87,31 @@ public class Trigger {
         xingzheLogin();
         // 2. 登录igps
         igpsLogin();
+        // 3. 登录捷安特
+        giantLogin();
         // 3. 获取igps活动
         syncIgpsActicities();
 
         return ResponseEntity.ok("ok");
+    }
+
+    private void giantLogin() throws IOException {
+        if (!giant.getEnable()) {
+            return;
+        }
+        // clear cookie
+        httpClient.execute(ClassicRequestBuilder.get("https://ridelife.giant.com.cn/web/login.html/index.php/api/login").build());
+        UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(CollUtil.toList(
+                new BasicNameValuePair("username", giant.getUsername()),
+                new BasicNameValuePair("password", giant.getPassword())
+        ));
+        ClassicRequestBuilder igpsLoginReq = ClassicRequestBuilder
+                .post("https://ridelife.giant.com.cn/index.php/api/login")
+                .setEntity(formEntity);
+        CloseableHttpResponse response = (CloseableHttpResponse) httpClient.execute(igpsLoginReq.build());
+        String responseData = new String(IoUtil.readBytes(response.getEntity().getContent()));
+        String token = JSONUtil.parseObj(responseData).getStr("user_token");
+        contextCache.put(GIANT_TOKEN_KEY, token);
     }
 
     private void syncIgpsActicities() throws IOException {
@@ -100,27 +128,49 @@ public class Trigger {
                 log.info("文件已存在" + filePath);
                 continue;
             }
-
             // 下载文件
-            String downloadUrl = "https://my.igpsport.com/fit/activity?type=0&rideid=" + activity.getRideId();
-            log.info("尝试下载" + downloadUrl);
-
-            CloseableHttpResponse downloadResp = (CloseableHttpResponse) httpClient.execute(ClassicRequestBuilder.get(downloadUrl).build());
-            InputStream downloadInputStream = downloadResp.getEntity().getContent();
-            long copied = IoUtil.copy(downloadInputStream, new FileOutputStream(filePath));
-            log.info("{} bytes copied", copied);
-
+            downloadFileFromIgps(activity, filePath);
             // 上传到xingzhe
-            String uploadUrl = "https://www.imxingzhe.com/api/v4/upload_fits";
-            HttpEntity uploadForm = MultipartEntityBuilder.create()
-                    .addPart("upload_file_name", new FileBody(new File(filePath)))
-                    .addPart("title", new StringBody(activity.getFileName(), ContentType.create("text/plain", Charset.defaultCharset())))
-                    .addPart("device", new StringBody("3", ContentType.create("text/plain", Charset.defaultCharset())))
-                    .addPart("sport", new StringBody("3", ContentType.create("text/plain", Charset.defaultCharset())))
-                    .build();
+            uploadToXingZhe(activity, filePath);
+            // sync to giant app
+            uploadToGiant(filePath);
+        }
+    }
 
-            CloseableHttpResponse uploadResponse = (CloseableHttpResponse) httpClient.execute(ClassicRequestBuilder.post(uploadUrl).setEntity(uploadForm).build());
-            log.info("upload result: {}", new String(IoUtil.readBytes(uploadResponse.getEntity().getContent())));
+    private void downloadFileFromIgps(IGPSActivity activity, String filePath) throws IOException {
+        String downloadUrl = "https://my.igpsport.com/fit/activity?type=0&rideid=" + activity.getRideId();
+        log.info("尝试下载" + downloadUrl);
+
+        CloseableHttpResponse downloadResp = (CloseableHttpResponse) httpClient.execute(ClassicRequestBuilder.get(downloadUrl).build());
+        InputStream downloadInputStream = downloadResp.getEntity().getContent();
+        long copied = IoUtil.copy(downloadInputStream, new FileOutputStream(filePath));
+        log.info("{} bytes copied", copied);
+    }
+
+    private void uploadToXingZhe(IGPSActivity activity, String filePath) throws IOException {
+        String uploadUrl = "https://www.imxingzhe.com/api/v4/upload_fits";
+        HttpEntity uploadForm = MultipartEntityBuilder.create()
+                .addPart("upload_file_name", new FileBody(new File(filePath)))
+                .addPart("title", new StringBody(activity.getFileName(), ContentType.create("text/plain", Charset.defaultCharset())))
+                .addPart("device", new StringBody("3", ContentType.create("text/plain", Charset.defaultCharset())))
+                .addPart("sport", new StringBody("3", ContentType.create("text/plain", Charset.defaultCharset())))
+                .build();
+
+        CloseableHttpResponse uploadResponse = (CloseableHttpResponse) httpClient.execute(ClassicRequestBuilder.post(uploadUrl).setEntity(uploadForm).build());
+        log.info("upload to xingzhe result: {}", new String(IoUtil.readBytes(uploadResponse.getEntity().getContent())));
+    }
+
+    private void uploadToGiant(String filePath) throws IOException {
+        if (giant.getEnable()) {
+            String giantUploadUrl = "https://ridelife.giant.com.cn/index.php/api/upload_fit";
+
+            cn.hutool.http.HttpRequest formed = HttpUtil.createPost(giantUploadUrl)
+                    .form("files[]", new File[]{new File(filePath)})
+                    .form("brand", "giant")
+                    .form("device", "bike_computer")
+                    .form("token", contextCache.getOrDefault(GIANT_TOKEN_KEY, "").toString());
+            cn.hutool.http.HttpResponse execute = formed.execute();
+            log.info("upload to giant result: {}", execute.body());
         }
     }
 
